@@ -1,0 +1,367 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// TradePilot — Nifty / BankNifty Intraday Strategy  v1.0
+// ───────────────────────────────────────────────────────────────────────────
+// Signals  : EMA Crossover + Supertrend + RSI + VWAP + Volume
+// Timeframe: 5 min or 15 min  (recommended)
+// Asset    : NSE:NIFTY  or  NSE:BANKNIFTY
+//
+// ── HOW TO USE ───────────────────────────────────────────────────────────────
+// 1. Open TradingView → Pine Script Editor → paste this code → Add to Chart
+// 2. Set "Webhook Secret" to the same value as your WEBHOOK_SECRET env var
+// 3. Update "Trading Symbol" every week with the current expiry contract
+//    Example: NIFTY2461224200CE  (NIFTY + YY + MM + DD + STRIKE + CE/PE)
+// 4. Create Alert → Condition: TradePilot BUY / SELL / EXIT
+//    → Webhook URL: https://yoursite.vercel.app/api/webhook/trading
+//    → Message: leave as {{strategy.order.alert_message}}  ← auto-filled
+//
+// ── WEEKLY SETUP (Every Thursday evening) ───────────────────────────────────
+// 1. Note next week's Nifty expiry date  (every Thursday)
+// 2. See current Nifty price → round to nearest 50/100 = ATM strike
+// 3. Update "CE Symbol" = NIFTY + expiry + ATM strike + CE
+// 4. Update "PE Symbol" = NIFTY + expiry + ATM strike + PE
+//
+// ── SIGNAL LOGIC ────────────────────────────────────────────────────────────
+// BUY CE  : EMA9 crosses above EMA21 + Supertrend bullish + RSI>55 + above VWAP
+// BUY PE  : EMA9 crosses below EMA21 + Supertrend bearish + RSI<45 + below VWAP
+// EXIT CE : Supertrend flips bearish  OR  RSI > 75
+// EXIT PE : Supertrend flips bullish  OR  RSI < 25
+// ═══════════════════════════════════════════════════════════════════════════
+
+//@version=5
+strategy(
+  title             = "TradePilot — Nifty/BankNifty Intraday",
+  overlay           = true,
+  default_qty_type  = strategy.fixed,
+  default_qty_value = 1,
+  initial_capital   = 100000,
+  currency          = currency.INR,
+  commission_type   = strategy.commission.percent,
+  commission_value  = 0.03,        // ~₹20 flat mapped to ~0.03%
+  calc_on_every_tick = false        // bar-close signals only → no repainting
+)
+
+// ════════════════════════════════════════════════════════════════════════════
+// ① INPUTS
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Webhook ──────────────────────────────────────────────────────────────────
+grp_web       = "🔗 Webhook Settings"
+webhook_secret = input.string("YOUR_SECRET_HERE", "Webhook Secret 🔑", group=grp_web,
+                  tooltip="Must match WEBHOOK_SECRET in your Vercel env vars")
+base_symbol   = input.string("NIFTY", "Index Symbol", group=grp_web,
+                  options=["NIFTY", "BANKNIFTY", "FINNIFTY"])
+lots          = input.int(1, "Lots to Trade", minval=1, maxval=5, group=grp_web)
+
+// ── Option Symbols (update every week) ───────────────────────────────────────
+grp_sym       = "📋 Option Symbols (update weekly)"
+ce_symbol     = input.string("NIFTY2461224200CE", "CE Symbol (Call Option)",  group=grp_sym,
+                  tooltip="e.g. NIFTY2461224200CE — update every Thursday for next expiry")
+pe_symbol     = input.string("NIFTY2461224200PE", "PE Symbol (Put Option)",   group=grp_sym,
+                  tooltip="e.g. NIFTY2461224200PE — update every Thursday for next expiry")
+sl_pct        = input.int(40, "Stop Loss % of Premium", minval=10, maxval=70, group=grp_sym,
+                  tooltip="Agent will place SL order at entry premium minus this %")
+
+// ── EMA Settings ─────────────────────────────────────────────────────────────
+grp_ema       = "📈 EMA Settings"
+ema_fast_len  = input.int(9,  "Fast EMA Period", minval=3,  maxval=50,  group=grp_ema)
+ema_slow_len  = input.int(21, "Slow EMA Period", minval=10, maxval=100, group=grp_ema)
+ema_trend_len = input.int(50, "Trend EMA Period (filter)", minval=20, maxval=200, group=grp_ema)
+use_trend_ema = input.bool(true, "Only trade in trend direction (price > EMA50 = bull)", group=grp_ema)
+
+// ── Supertrend ────────────────────────────────────────────────────────────────
+grp_st        = "🌀 Supertrend Settings"
+st_atr_len    = input.int(10,  "ATR Period",    minval=5,  maxval=20,  group=grp_st)
+st_mult       = input.float(3.0, "Multiplier", minval=1.0, maxval=6.0, step=0.5, group=grp_st)
+
+// ── RSI ───────────────────────────────────────────────────────────────────────
+grp_rsi       = "📊 RSI Settings"
+rsi_len       = input.int(14, "RSI Period",      minval=5, maxval=30, group=grp_rsi)
+rsi_bull      = input.int(55, "RSI Bull Level",  minval=50, maxval=65, group=grp_rsi)
+rsi_bear      = input.int(45, "RSI Bear Level",  minval=35, maxval=50, group=grp_rsi)
+rsi_exit_bull = input.int(75, "RSI Exit (overbought)",  minval=65, maxval=85, group=grp_rsi)
+rsi_exit_bear = input.int(25, "RSI Exit (oversold)",    minval=15, maxval=35, group=grp_rsi)
+
+// ── Filters ───────────────────────────────────────────────────────────────────
+grp_fil       = "🔍 Filters"
+use_vwap      = input.bool(true, "VWAP Filter (trade in VWAP direction)", group=grp_fil)
+use_vol       = input.bool(true, "Volume Filter",                         group=grp_fil)
+vol_mult      = input.float(1.2, "Min Volume (x avg)",   minval=0.5, maxval=3.0, step=0.1, group=grp_fil)
+
+// ── Session ───────────────────────────────────────────────────────────────────
+grp_time      = "🕐 Session Filter"
+sess_start_h  = input.int(9,  "Start Hour (IST)",   minval=9,  maxval=10, group=grp_time)
+sess_start_m  = input.int(30, "Start Minute",       minval=0,  maxval=59, group=grp_time)
+sess_end_h    = input.int(15, "End Hour (IST)",     minval=14, maxval=15, group=grp_time)
+sess_end_m    = input.int(15, "End Minute",         minval=0,  maxval=59, group=grp_time)
+
+// ════════════════════════════════════════════════════════════════════════════
+// ② CALCULATIONS
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Session time ─────────────────────────────────────────────────────────────
+var int TZ_OFFSET = 0  // TradingView handles IST natively for NSE charts
+current_mins = hour * 60 + minute
+start_mins   = sess_start_h * 60 + sess_start_m
+end_mins     = sess_end_h   * 60 + sess_end_m
+in_session   = current_mins >= start_mins and current_mins <= end_mins
+
+// ── EMA ───────────────────────────────────────────────────────────────────────
+ema_f  = ta.ema(close, ema_fast_len)
+ema_s  = ta.ema(close, ema_slow_len)
+ema_t  = ta.ema(close, ema_trend_len)
+
+ema_cross_up   = ta.crossover(ema_f, ema_s)
+ema_cross_down = ta.crossunder(ema_f, ema_s)
+
+trend_bull = not use_trend_ema or close > ema_t
+trend_bear = not use_trend_ema or close < ema_t
+
+// ── Supertrend ────────────────────────────────────────────────────────────────
+[st_line, st_dir] = ta.supertrend(st_mult, st_atr_len)
+is_st_bull = st_dir < 0   // direction −1 = uptrend (bullish)
+is_st_bear = st_dir > 0   // direction +1 = downtrend (bearish)
+
+st_flip_bull = is_st_bull and not is_st_bull[1]   // just turned bullish
+st_flip_bear = is_st_bear and not is_st_bear[1]   // just turned bearish
+
+// ── RSI ───────────────────────────────────────────────────────────────────────
+rsi_val    = ta.rsi(close, rsi_len)
+is_rsi_ok_bull = rsi_val > rsi_bull and rsi_val < rsi_exit_bull
+is_rsi_ok_bear = rsi_val < rsi_bear and rsi_val > rsi_exit_bear
+
+// ── VWAP ─────────────────────────────────────────────────────────────────────
+vwap_val         = ta.vwap(hlc3)
+above_vwap       = not use_vwap or close > vwap_val
+below_vwap       = not use_vwap or close < vwap_val
+
+// ── Volume ────────────────────────────────────────────────────────────────────
+vol_avg    = ta.sma(volume, 20)
+vol_ok     = not use_vol or volume > vol_avg * vol_mult
+
+// ── ATR (for context / info table) ───────────────────────────────────────────
+atr_val = ta.atr(14)
+
+// ════════════════════════════════════════════════════════════════════════════
+// ③ SIGNAL CONDITIONS
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── BUY CE (bullish) ─────────────────────────────────────────────────────────
+// EMA crossover + Supertrend bullish + RSI in range + above VWAP + volume + in session
+buy_ce = ema_cross_up
+       and is_st_bull
+       and is_rsi_ok_bull
+       and above_vwap
+       and vol_ok
+       and trend_bull
+       and in_session
+
+// ── BUY PE (bearish) ─────────────────────────────────────────────────────────
+buy_pe = ema_cross_down
+       and is_st_bear
+       and is_rsi_ok_bear
+       and below_vwap
+       and vol_ok
+       and trend_bear
+       and in_session
+
+// ── EXIT LONG ────────────────────────────────────────────────────────────────
+exit_ce = (is_st_bear or rsi_val > rsi_exit_bull or not in_session)
+        and strategy.position_size > 0
+
+// ── EXIT SHORT ───────────────────────────────────────────────────────────────
+exit_pe = (is_st_bull or rsi_val < rsi_exit_bear or not in_session)
+        and strategy.position_size < 0
+
+// ════════════════════════════════════════════════════════════════════════════
+// ④ WEBHOOK ALERT MESSAGES
+// ════════════════════════════════════════════════════════════════════════════
+
+rsi_str    = str.tostring(math.round(rsi_val, 1))
+close_str  = str.tostring(close)
+lots_str   = str.tostring(lots)
+sl_str     = str.tostring(sl_pct)
+
+buy_ce_msg = '{"secret":"' + webhook_secret +
+             '","action":"BUY"' +
+             ',"symbol":"' + base_symbol + '"' +
+             ',"tradingsymbol":"' + ce_symbol + '"' +
+             ',"lots":' + lots_str +
+             ',"price":' + close_str +
+             ',"stop_loss_pct":' + sl_str +
+             ',"reason":"EMA cross up + ST bull + RSI=' + rsi_str + '"}'
+
+buy_pe_msg = '{"secret":"' + webhook_secret +
+             '","action":"BUY"' +
+             ',"symbol":"' + base_symbol + '"' +
+             ',"tradingsymbol":"' + pe_symbol + '"' +
+             ',"lots":' + lots_str +
+             ',"price":' + close_str +
+             ',"stop_loss_pct":' + sl_str +
+             ',"reason":"EMA cross down + ST bear + RSI=' + rsi_str + '"}'
+
+exit_ce_msg = '{"secret":"' + webhook_secret +
+              '","action":"SELL"' +
+              ',"symbol":"' + base_symbol + '"' +
+              ',"tradingsymbol":"' + ce_symbol + '"' +
+              ',"lots":' + lots_str +
+              ',"price":' + close_str +
+              ',"reason":"Exit CE — ST flipped/RSI extreme"}'
+
+exit_pe_msg = '{"secret":"' + webhook_secret +
+              '","action":"SELL"' +
+              ',"symbol":"' + base_symbol + '"' +
+              ',"tradingsymbol":"' + pe_symbol + '"' +
+              ',"lots":' + lots_str +
+              ',"price":' + close_str +
+              ',"reason":"Exit PE — ST flipped/RSI extreme"}'
+
+// ════════════════════════════════════════════════════════════════════════════
+// ⑤ STRATEGY ENTRIES  (for backtesting)
+// ════════════════════════════════════════════════════════════════════════════
+
+if buy_ce
+    strategy.entry("LONG", strategy.long,  alert_message=buy_ce_msg)
+
+if buy_pe
+    strategy.entry("SHORT", strategy.short, alert_message=buy_pe_msg)
+
+if exit_ce
+    strategy.close("LONG",  alert_message=exit_ce_msg)
+
+if exit_pe
+    strategy.close("SHORT", alert_message=exit_pe_msg)
+
+// ════════════════════════════════════════════════════════════════════════════
+// ⑥ ALERT CONDITIONS  (for live trading — create separate alerts for each)
+// ════════════════════════════════════════════════════════════════════════════
+
+alertcondition(buy_ce,  title="🟢 BUY CE (Buy Call)",  message=buy_ce_msg)
+alertcondition(buy_pe,  title="🔴 BUY PE (Buy Put)",   message=buy_pe_msg)
+alertcondition(exit_ce, title="⚪ EXIT CE",             message=exit_ce_msg)
+alertcondition(exit_pe, title="⚪ EXIT PE",             message=exit_pe_msg)
+
+// ════════════════════════════════════════════════════════════════════════════
+// ⑦ VISUALS ON CHART
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── EMA lines ────────────────────────────────────────────────────────────────
+plot(ema_f, "EMA Fast ("  + str.tostring(ema_fast_len)  + ")",
+     color=color.new(color.green, 10), linewidth=1)
+plot(ema_s, "EMA Slow ("  + str.tostring(ema_slow_len)  + ")",
+     color=color.new(color.red,   10), linewidth=1)
+plot(ema_t, "EMA Trend (" + str.tostring(ema_trend_len) + ")",
+     color=color.new(color.blue,  20), linewidth=2, style=plot.style_circles)
+
+// ── Supertrend ────────────────────────────────────────────────────────────────
+st_color = is_st_bull ? color.new(color.green, 0) : color.new(color.red, 0)
+plot(st_line, "Supertrend", color=st_color, linewidth=2)
+
+// ── VWAP ─────────────────────────────────────────────────────────────────────
+plot(use_vwap ? vwap_val : na, "VWAP",
+     color=color.new(color.purple, 20), linewidth=1, style=plot.style_steplinebr)
+
+// ── Buy / Sell signal shapes ──────────────────────────────────────────────────
+plotshape(
+  buy_ce,
+  title     = "BUY CE ▲",
+  style     = shape.triangleup,
+  location  = location.belowbar,
+  color     = color.new(color.green, 0),
+  size      = size.normal,
+  text      = "BUY CE",
+  textcolor = color.white
+)
+
+plotshape(
+  buy_pe,
+  title     = "BUY PE ▼",
+  style     = shape.triangledown,
+  location  = location.abovebar,
+  color     = color.new(color.red, 0),
+  size      = size.normal,
+  text      = "BUY PE",
+  textcolor = color.white
+)
+
+plotshape(
+  exit_ce or exit_pe,
+  title     = "EXIT ✕",
+  style     = shape.xcross,
+  location  = location.belowbar,
+  color     = color.new(color.orange, 0),
+  size      = size.small,
+  text      = "EXIT"
+)
+
+// ── Background: session + trend ───────────────────────────────────────────────
+bgcolor(
+  not in_session         ? color.new(color.gray,    92) :
+  is_st_bull and in_session ? color.new(color.green, 95) :
+  is_st_bear and in_session ? color.new(color.red,   95) :
+  na,
+  title = "Session / Trend Background"
+)
+
+// ── EMA cross highlights ──────────────────────────────────────────────────────
+bgcolor(buy_ce ? color.new(color.green, 80) : na, title="BUY CE bar")
+bgcolor(buy_pe ? color.new(color.red,   80) : na, title="BUY PE bar")
+
+// ── Info Table (top-right corner) ────────────────────────────────────────────
+var table info = table.new(position.top_right, 2, 7,
+  bgcolor     = color.new(color.black, 70),
+  border_color = color.new(color.gray, 50),
+  border_width = 1,
+  frame_color  = color.new(color.gray, 50),
+  frame_width  = 1
+)
+
+if barstate.islast
+    // Header
+    table.cell(info, 0, 0, "TradePilot", text_color=color.white,  text_size=size.small, text_halign=text.align_center)
+    table.cell(info, 1, 0, base_symbol,  text_color=color.yellow, text_size=size.small, text_halign=text.align_center)
+
+    // Supertrend
+    table.cell(info, 0, 1, "Supertrend", text_color=color.gray,  text_size=size.tiny)
+    table.cell(info, 1, 1,
+      is_st_bull ? "🟢 BULL" : "🔴 BEAR",
+      text_color = is_st_bull ? color.green : color.red,
+      text_size  = size.tiny
+    )
+
+    // EMA
+    table.cell(info, 0, 2, "EMA " + str.tostring(ema_fast_len) + "/" + str.tostring(ema_slow_len),
+      text_color=color.gray, text_size=size.tiny)
+    table.cell(info, 1, 2,
+      ema_f > ema_s ? "🟢 BULL" : "🔴 BEAR",
+      text_color = ema_f > ema_s ? color.green : color.red,
+      text_size  = size.tiny
+    )
+
+    // RSI
+    table.cell(info, 0, 3, "RSI", text_color=color.gray, text_size=size.tiny)
+    table.cell(info, 1, 3,
+      str.tostring(math.round(rsi_val, 1)),
+      text_color = rsi_val > 70 ? color.red : rsi_val < 30 ? color.green : color.white,
+      text_size  = size.tiny
+    )
+
+    // VWAP
+    table.cell(info, 0, 4, "VWAP", text_color=color.gray, text_size=size.tiny)
+    table.cell(info, 1, 4,
+      close > vwap_val ? "Above ↑" : "Below ↓",
+      text_color = close > vwap_val ? color.green : color.red,
+      text_size  = size.tiny
+    )
+
+    // ATR
+    table.cell(info, 0, 5, "ATR(14)", text_color=color.gray, text_size=size.tiny)
+    table.cell(info, 1, 5, str.tostring(math.round(atr_val, 2)),
+      text_color=color.white, text_size=size.tiny)
+
+    // Session
+    table.cell(info, 0, 6, "Session", text_color=color.gray, text_size=size.tiny)
+    table.cell(info, 1, 6,
+      in_session ? "🟢 OPEN" : "🔴 CLOSED",
+      text_color = in_session ? color.green : color.red,
+      text_size  = size.tiny
+    )

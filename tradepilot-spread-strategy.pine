@@ -1,0 +1,169 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// TradePilot — Spread Direction Signals  v1.0
+// ───────────────────────────────────────────────────────────────────────────
+// Used when Morning Scan selects "Spread" strategy (VIX 13–17).
+//
+// This script sends directional signals to the webhook which then places
+// a HEDGED spread — NOT a naked option.
+//
+// BUY signal  → Webhook places Bull Put Spread  (sell ATM put + buy OTM put)
+// SELL signal → Webhook places Bear Call Spread (sell ATM call + buy OTM call)
+//
+// Max loss is always CAPPED to the spread width.
+//
+// ── SETUP ────────────────────────────────────────────────────────────────────
+// 1. Paste in TradingView Pine Script Editor → Add to chart (NSE:NIFTY, 15min)
+// 2. Set Webhook Secret = your WEBHOOK_SECRET env var
+// 3. Create 2 alerts:
+//      Alert 1: "🟢 Spread BUY Signal"  → webhook URL
+//      Alert 2: "🔴 Spread SELL Signal" → webhook URL
+// ═══════════════════════════════════════════════════════════════════════════
+
+//@version=5
+strategy(
+  title             = "TradePilot — Spread Direction (Hedged)",
+  overlay           = true,
+  default_qty_type  = strategy.fixed,
+  default_qty_value = 1,
+  initial_capital   = 100000,
+  currency          = currency.INR,
+  commission_type   = strategy.commission.percent,
+  commission_value  = 0.03,
+  calc_on_every_tick = false
+)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+grp_w = "🔗 Webhook"
+webhook_secret = input.string("YOUR_SECRET_HERE", "Webhook Secret", group=grp_w)
+base_symbol    = input.string("NIFTY", "Index", options=["NIFTY","BANKNIFTY"], group=grp_w)
+lots           = input.int(1, "Lots", minval=1, maxval=5, group=grp_w)
+
+grp_e = "📋 Expiry (update weekly)"
+expiry_date = input.string("2026-06-12", "Expiry Date (YYYY-MM-DD)", group=grp_e,
+               tooltip="Enter next Thursday's date for Nifty weekly expiry")
+spread_width = input.int(100, "Spread Width (pts)", minval=50, maxval=300, step=50, group=grp_e)
+
+grp_i = "📊 Indicators"
+ema_fast     = input.int(9,  "Fast EMA",   group=grp_i)
+ema_slow     = input.int(21, "Slow EMA",   group=grp_i)
+ema_trend    = input.int(50, "Trend EMA",  group=grp_i)
+st_atr       = input.int(10, "ST ATR Len", group=grp_i)
+st_mult      = input.float(3.0, "ST Mult", group=grp_i, step=0.5)
+rsi_len      = input.int(14, "RSI Len",    group=grp_i)
+
+grp_t = "🕐 Session (IST)"
+t_start_h = input.int(9,  "Start Hour",   group=grp_t)
+t_start_m = input.int(30, "Start Min",    group=grp_t)
+t_end_h   = input.int(15, "End Hour",     group=grp_t)
+t_end_m   = input.int(15, "End Min",      group=grp_t)
+
+// ── Calculations ─────────────────────────────────────────────────────────────
+mins_now   = hour * 60 + minute
+in_session = mins_now >= t_start_h * 60 + t_start_m and mins_now <= t_end_h * 60 + t_end_m
+
+ema_f = ta.ema(close, ema_fast)
+ema_s = ta.ema(close, ema_slow)
+ema_t = ta.ema(close, ema_trend)
+
+[st_val, st_dir] = ta.supertrend(st_mult, st_atr)
+st_bull = st_dir < 0
+st_bear = st_dir > 0
+
+rsi_val = ta.rsi(close, rsi_len)
+vwap_v  = ta.vwap(hlc3)
+
+// ── Signals ───────────────────────────────────────────────────────────────────
+buy_signal = ta.crossover(ema_f, ema_s)
+           and st_bull
+           and close > ema_t
+           and close > vwap_v
+           and rsi_val > 50 and rsi_val < 72
+           and in_session
+
+sell_signal = ta.crossunder(ema_f, ema_s)
+            and st_bear
+            and close < ema_t
+            and close < vwap_v
+            and rsi_val < 50 and rsi_val > 28
+            and in_session
+
+exit_long  = (st_bear or not in_session) and strategy.position_size > 0
+exit_short = (st_bull or not in_session) and strategy.position_size < 0
+
+// ── Webhook Messages ──────────────────────────────────────────────────────────
+// Server will look up today's day_strategy to know which specific option symbols to use
+buy_msg = '{"secret":"'  + webhook_secret +
+          '","action":"BUY"' +
+          ',"strategy":"bull_put_spread"' +
+          ',"symbol":"'  + base_symbol + '"' +
+          ',"expiry":"'  + expiry_date + '"' +
+          ',"lots":'     + str.tostring(lots) +
+          ',"spread_width":' + str.tostring(spread_width) +
+          ',"price":'    + str.tostring(close) +
+          ',"reason":"EMA cross up + ST bull + RSI=' + str.tostring(math.round(rsi_val,1)) + '"}'
+
+sell_msg = '{"secret":"' + webhook_secret +
+           '","action":"SELL"' +
+           ',"strategy":"bear_call_spread"' +
+           ',"symbol":"' + base_symbol + '"' +
+           ',"expiry":"' + expiry_date + '"' +
+           ',"lots":'    + str.tostring(lots) +
+           ',"spread_width":' + str.tostring(spread_width) +
+           ',"price":'   + str.tostring(close) +
+           ',"reason":"EMA cross down + ST bear + RSI=' + str.tostring(math.round(rsi_val,1)) + '"}'
+
+exit_msg = '{"secret":"' + webhook_secret +
+           '","action":"EXIT"' +
+           ',"symbol":"' + base_symbol + '"' +
+           ',"price":'   + str.tostring(close) +
+           ',"reason":"Exit signal"}'
+
+// ── Strategy entries ──────────────────────────────────────────────────────────
+if buy_signal
+    strategy.entry("LONG",  strategy.long,  alert_message=buy_msg)
+if sell_signal
+    strategy.entry("SHORT", strategy.short, alert_message=sell_msg)
+if exit_long
+    strategy.close("LONG",  alert_message=exit_msg)
+if exit_short
+    strategy.close("SHORT", alert_message=exit_msg)
+
+// ── Alert conditions ──────────────────────────────────────────────────────────
+alertcondition(buy_signal,  title="🟢 Spread BUY Signal  (Bull Put Spread)", message=buy_msg)
+alertcondition(sell_signal, title="🔴 Spread SELL Signal (Bear Call Spread)", message=sell_msg)
+alertcondition(exit_long or exit_short, title="⚪ Spread EXIT", message=exit_msg)
+
+// ── Visuals ───────────────────────────────────────────────────────────────────
+plot(ema_f, "EMA Fast",  color=color.new(color.green, 10), linewidth=1)
+plot(ema_s, "EMA Slow",  color=color.new(color.red,   10), linewidth=1)
+plot(ema_t, "EMA Trend", color=color.new(color.blue,  20), linewidth=2)
+plot(st_val, "Supertrend", color=st_bull ? color.green : color.red, linewidth=2)
+plot(vwap_v, "VWAP", color=color.new(color.purple, 20), style=plot.style_steplinebr)
+
+plotshape(buy_signal,  style=shape.triangleup,   location=location.belowbar,
+          color=color.green, size=size.normal, text="BUY\nSpread", textcolor=color.white)
+plotshape(sell_signal, style=shape.triangledown, location=location.abovebar,
+          color=color.red,   size=size.normal, text="SELL\nSpread", textcolor=color.white)
+
+bgcolor(st_bull and in_session ? color.new(color.green,95) :
+        st_bear and in_session ? color.new(color.red,95)   : na)
+
+// ── Info table ────────────────────────────────────────────────────────────────
+var table t = table.new(position.top_right, 2, 5,
+  bgcolor=color.new(color.black, 70), border_color=color.gray, border_width=1)
+
+if barstate.islast
+    table.cell(t,0,0,"TradePilot",   text_color=color.white,  text_size=size.small)
+    table.cell(t,1,0,"SPREAD",       text_color=color.yellow, text_size=size.small)
+    table.cell(t,0,1,"ST",           text_color=color.gray,   text_size=size.tiny)
+    table.cell(t,1,1, st_bull?"🟢 BULL":"🔴 BEAR",
+               text_color=st_bull?color.green:color.red, text_size=size.tiny)
+    table.cell(t,0,2,"RSI",          text_color=color.gray,  text_size=size.tiny)
+    table.cell(t,1,2, str.tostring(math.round(rsi_val,1)),
+               text_color=rsi_val>70?color.red:rsi_val<30?color.green:color.white, text_size=size.tiny)
+    table.cell(t,0,3,"VWAP",         text_color=color.gray,  text_size=size.tiny)
+    table.cell(t,1,3, close>vwap_v?"Above":"Below",
+               text_color=close>vwap_v?color.green:color.red, text_size=size.tiny)
+    table.cell(t,0,4,"Session",      text_color=color.gray,  text_size=size.tiny)
+    table.cell(t,1,4, in_session?"🟢 OPEN":"🔴 OFF",
+               text_color=in_session?color.green:color.red, text_size=size.tiny)

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/",       "destination": "/trade.html" },
+    { "source": "/trade",  "destination": "/trade.html" },
+    { "source": "/((?!api/).*)", "destination": "/trade.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options",        "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ],
+  "crons": [
+    { "path": "/api/trade/morning-scan", "schedule": "45 3 * * 1-5" },
+    { "path": "/api/trade/autoexit",     "schedule": "45 9 * * 1-5" }
+  ]
+}
