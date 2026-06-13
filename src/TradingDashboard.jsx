@@ -109,6 +109,14 @@ export default function TradingDashboard({ user, onLogout }) {
   const [liveStatus, setLiveStatus]       = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
 
+  // ── Derived stats (live > fallback to 0) ────────────────────────────────
+  const todayPnl      = liveStatus?.todayPnl  ?? 0;
+  const trades        = liveStatus?.trades    ?? [];
+  const winRate       = liveStatus?.winRate   ?? 0;
+  const winTrades     = trades.filter(t => t.pnl >= 0).length;
+  const kiteConnected = liveStatus?.kiteConnected ?? false;
+  const pnlColor      = todayPnl >= 0 ? "#10B981" : "#EF4444";
+
   // ── Kite connect fields ─────────────────────────────────────────────────
   const [kiteKey, setKiteKey]             = useState("");
   const [kiteSecret, setKiteSecret]       = useState("");
@@ -203,7 +211,7 @@ export default function TradingDashboard({ user, onLogout }) {
     if (!window.confirm("⚠️ EMERGENCY EXIT\n\nThis will IMMEDIATELY close ALL open positions at market price.\n\nAre you sure?")) return;
     setExitLoading(true);
     try {
-      const r = await fetch(`/api/trade/autoexit?secret=${encodeURIComponent(process.env.VITE_CRON_SECRET || "")}`);
+      const r = await fetch(`/api/trade/autoexit?secret=${encodeURIComponent(import.meta.env.VITE_CRON_SECRET || "")}`);
       const d = await r.json();
       if (d.ok) {
         alert(`✅ ${d.message}\nP&L: ₹${d.totalPnl}`);
@@ -217,13 +225,6 @@ export default function TradingDashboard({ user, onLogout }) {
     }
     setExitLoading(false);
   };
-
-  // ── Derived stats (live > fallback to 0) ────────────────────────────────
-  const todayPnl      = liveStatus?.todayPnl  ?? 0;
-  const trades        = liveStatus?.trades    ?? [];
-  const winRate       = liveStatus?.winRate   ?? 0;
-  const kiteConnected = liveStatus?.kiteConnected ?? false;
-  const pnlColor      = todayPnl >= 0 ? "#10B981" : "#EF4444";
 
   const CARD = {
     background: "#1E1035",
