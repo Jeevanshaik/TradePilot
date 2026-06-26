@@ -168,17 +168,23 @@ export default async function handler(req, res) {
         continue;
       }
 
-      const closes = closed.map(c => c[4]);
+      const closes  = closed.map(c => c[4]);
+      const volumes = closed.map(c => c[5]);
 
       // ── Indicators ────────────────────────────────────────────────────────
-      const e7c  = ema(closes, 7);
-      const e21c = ema(closes, 21);
-      const e7p  = ema(closes.slice(0, -1), 7);
-      const e21p = ema(closes.slice(0, -1), 21);
-      const rsiV = rsi(closes, 7);
-      const adxV = adx(closed, 14);
+      const e7c   = ema(closes, 7);
+      const e21c  = ema(closes, 21);
+      const e7p   = ema(closes.slice(0, -1), 7);
+      const e21p  = ema(closes.slice(0, -1), 21);
+      const rsiV  = rsi(closes, 7);
+      const adxV  = adx(closed, 14);
       const vwapV = vwap(todayCandles.filter((_, i) => i < todayCandles.length - 1));
       const last  = closes[closes.length - 1];
+
+      // Volume filter: current candle volume vs 20-candle average
+      const avgVol  = volumes.slice(-20).reduce((s, v) => s + v, 0) / 20;
+      const lastVol = volumes[volumes.length - 1];
+      const highVol = lastVol > avgVol * 1.5;
 
       // Opening Range (first 2×15m candles of today = 9:15 + 9:30)
       const orbC   = todayCandles.slice(0, 2);
@@ -190,6 +196,7 @@ export default async function handler(req, res) {
         ema7: e7c?.toFixed(1), ema21: e21c?.toFixed(1),
         rsi: rsiV?.toFixed(0), adx: adxV?.toFixed(0),
         vwap: vwapV?.toFixed(0), vix: vixLevel.toFixed(1),
+        vol: `${(lastVol / avgVol).toFixed(2)}x`,
       };
 
       // ── 2. ADX gate ───────────────────────────────────────────────────────
@@ -207,16 +214,16 @@ export default async function handler(req, res) {
       const aboveVwap  = vwapV ? last > vwapV : true;
       const belowVwap  = vwapV ? last < vwapV : true;
 
-      if (bullCross && rsiV > 55 && rsiV < 80 && aboveVwap) {
+      if (bullCross && rsiV > 55 && rsiV < 80 && aboveVwap && highVol) {
         signal = {
           action: "BUY", strategy: "bull_put_spread",
-          reason: `EMA7 crossed EMA21 ↑ | RSI7=${rsiV?.toFixed(0)} | VWAP ok | ADX=${adxV?.toFixed(0)} | VIX=${vixLevel.toFixed(1)}`,
+          reason: `EMA7↑EMA21 | RSI7=${rsiV?.toFixed(0)} | Vol=${(lastVol/avgVol).toFixed(2)}x | ADX=${adxV?.toFixed(0)} | VIX=${vixLevel.toFixed(1)}`,
         };
       }
-      if (!signal && bearCross && rsiV < 45 && rsiV > 20 && belowVwap) {
+      if (!signal && bearCross && rsiV < 45 && rsiV > 20 && belowVwap && highVol) {
         signal = {
           action: "SELL", strategy: "bear_call_spread",
-          reason: `EMA7 crossed EMA21 ↓ | RSI7=${rsiV?.toFixed(0)} | VWAP ok | ADX=${adxV?.toFixed(0)} | VIX=${vixLevel.toFixed(1)}`,
+          reason: `EMA7↓EMA21 | RSI7=${rsiV?.toFixed(0)} | Vol=${(lastVol/avgVol).toFixed(2)}x | ADX=${adxV?.toFixed(0)} | VIX=${vixLevel.toFixed(1)}`,
         };
       }
 
