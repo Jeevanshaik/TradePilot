@@ -244,7 +244,13 @@ export default async function handler(req, res) {
 
       if (!signal) { results.push({ ...state, signal: "none" }); continue; }
 
-      // ── Fire webhook ──────────────────────────────────────────────────────
+      // ── Fire webhook (skip if PAPER_TRADE=true) ───────────────────────────
+      const isPaper = process.env.PAPER_TRADE === "true";
+      if (isPaper) {
+        results.push({ ...state, signal: signal.action, mode: "PAPER", note: "Signal detected — no real order placed" });
+        continue;
+      }
+
       const wh     = await fetch(`${baseUrl}/api/webhook/trading`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -255,7 +261,7 @@ export default async function handler(req, res) {
           price: last, expiry, reason: signal.reason,
         }),
       });
-      results.push({ ...state, signal: signal.action, webhook: await wh.json() });
+      results.push({ ...state, signal: signal.action, mode: "LIVE", webhook: await wh.json() });
 
     } catch (err) {
       results.push({ symbol: inst.symbol, error: err.message });
