@@ -117,9 +117,6 @@ export default function TradingDashboard({ user, onLogout }) {
   const kiteConnected = liveStatus?.kiteConnected ?? false;
   const pnlColor      = todayPnl >= 0 ? "#10B981" : "#EF4444";
 
-  // ── Kite connect fields ─────────────────────────────────────────────────
-  const [kiteKey, setKiteKey]             = useState("");
-  const [kiteSecret, setKiteSecret]       = useState("");
 
   // ── Kite OAuth callback: detect ?request_token in URL ───────────────────
   useEffect(() => {
@@ -130,21 +127,11 @@ export default function TradingDashboard({ user, onLogout }) {
     // Remove from URL immediately
     window.history.replaceState({}, "", window.location.pathname);
 
-    // Exchange for access_token
-    const stored = (() => { try { return JSON.parse(localStorage.getItem("tp_kite_keys") || "{}"); } catch { return {}; } })();
-    if (!stored.api_key || !stored.api_secret) {
-      alert("⚠️ Enter your Zerodha API Key & Secret in Setup tab first, then connect again.");
-      return;
-    }
-
+    // Exchange for access_token — server uses KITE_API_KEY + KITE_API_SECRET env vars
     fetch("/api/kite/connect", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({
-        request_token:  requestToken,
-        api_key:        stored.api_key,
-        api_secret:     stored.api_secret,
-      }),
+      body:    JSON.stringify({ request_token: requestToken }),
     })
       .then(r => r.json())
       .then(d => {
@@ -734,38 +721,13 @@ export default function TradingDashboard({ user, onLogout }) {
                 }}>✅ Connected</span>
               )}
             </div>
-            <label style={{ fontSize: 12, opacity: 0.65, display: "block", marginBottom: 5 }}>API Key</label>
-            <input
-              type="password"
-              placeholder="Enter Kite API Key"
-              value={kiteKey}
-              onChange={e => setKiteKey(e.target.value)}
-              style={{ ...INPUT, marginBottom: 10 }}
-            />
-            <label style={{ fontSize: 12, opacity: 0.65, display: "block", marginBottom: 5 }}>API Secret</label>
-            <input
-              type="password"
-              placeholder="Enter Kite API Secret"
-              value={kiteSecret}
-              onChange={e => setKiteSecret(e.target.value)}
-              style={{ ...INPUT, marginBottom: 14 }}
-            />
             <button
               onClick={async () => {
-                if (!kiteKey || !kiteSecret) {
-                  alert("Please enter both API Key and Secret.");
-                  return;
-                }
-                // Save keys locally — OAuth callback will read them
-                localStorage.setItem("tp_kite_keys", JSON.stringify({
-                  api_key:    kiteKey.trim(),
-                  api_secret: kiteSecret.trim(),
-                }));
                 try {
-                  const r = await fetch(`/api/kite/connect?api_key=${encodeURIComponent(kiteKey.trim())}`);
+                  const r = await fetch("/api/kite/connect");
                   const d = await r.json();
                   if (d.ok && d.loginUrl) {
-                    window.location.href = d.loginUrl; // redirect to Zerodha
+                    window.location.href = d.loginUrl;
                   } else {
                     alert("❌ " + (d.error || "Could not get login URL"));
                   }
