@@ -129,6 +129,7 @@ export default function TradingDashboard({ user, onLogout }) {
 
     // Exchange for access_token
     const savedKey = sessionStorage.getItem("tp_kite_api_key") || "";
+    setConnectMsg({ ok: null, text: "⏳ Connecting to Zerodha..." });
     fetch("/api/kite/connect", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -137,13 +138,13 @@ export default function TradingDashboard({ user, onLogout }) {
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
-          alert(`✅ Zerodha connected! Welcome ${d.user_name}`);
+          setConnectMsg({ ok: true, text: `✅ Connected! Welcome ${d.user_name}` });
           pollStatus();
         } else {
-          alert("❌ Zerodha connect failed: " + d.error);
+          setConnectMsg({ ok: false, text: `❌ Failed: ${d.error}` });
         }
       })
-      .catch(e => alert("❌ Network error: " + e.message));
+      .catch(e => setConnectMsg({ ok: false, text: `❌ Network error: ${e.message}` }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -179,6 +180,7 @@ export default function TradingDashboard({ user, onLogout }) {
   const [exitLoading,  setExitLoading]  = useState(false);
   const [sigLoading,   setSigLoading]   = useState(false);
   const [sigResult,    setSigResult]    = useState(null);
+  const [connectMsg,   setConnectMsg]   = useState(null); // {ok, text}
 
   const pollPositions = useCallback(async () => {
     try {
@@ -799,8 +801,17 @@ export default function TradingDashboard({ user, onLogout }) {
                 Disconnect
               </button>
             )}
+            {connectMsg && (
+              <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, textAlign: "center",
+                background: connectMsg.ok === true ? "rgba(16,185,129,.15)" : connectMsg.ok === false ? "rgba(239,68,68,.15)" : "rgba(167,139,250,.15)",
+                color: connectMsg.ok === true ? "#10B981" : connectMsg.ok === false ? "#EF4444" : "#A78BFA",
+                border: `1px solid ${connectMsg.ok === true ? "rgba(16,185,129,.3)" : connectMsg.ok === false ? "rgba(239,68,68,.3)" : "rgba(167,139,250,.3)"}`,
+              }}>
+                {connectMsg.text}
+              </div>
+            )}
             <div style={{ fontSize: 10, opacity: 0.4, marginTop: 8, textAlign: "center" }}>
-              Keys saved locally only • Get API from kite.zerodha.com/apps
+              Connects once per day • Token stored securely in server
             </div>
           </div>
 
