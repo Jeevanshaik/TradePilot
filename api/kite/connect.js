@@ -100,9 +100,6 @@ export default async function handler(req, res) {
         id:           1,
         api_key:      apiKey,
         access_token,
-        user_id,
-        user_name,
-        refreshed_at: new Date().toISOString(),
       });
 
       if (dbErr) throw new Error(`Supabase save failed: ${dbErr.message}`);
