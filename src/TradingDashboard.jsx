@@ -176,6 +176,8 @@ export default function TradingDashboard({ user, onLogout }) {
   const [positions,    setPositions]    = useState([]);
   const [livePnl,      setLivePnl]      = useState(0);
   const [exitLoading,  setExitLoading]  = useState(false);
+  const [sigLoading,   setSigLoading]   = useState(false);
+  const [sigResult,    setSigResult]    = useState(null);
 
   const pollPositions = useCallback(async () => {
     try {
@@ -594,43 +596,33 @@ export default function TradingDashboard({ user, onLogout }) {
           )}
 
           {/* Run Signal Now */}
-          {(() => {
-            const [sigLoading, setSigLoading] = React.useState(false);
-            const [sigResult,  setSigResult]  = React.useState(null);
-            return (
-              <div style={{ ...CARD, marginBottom: 14, border: "1px solid rgba(167,139,250,.3)", background: "rgba(167,139,250,.06)" }}>
-                <div style={{ fontWeight: 800, fontSize: 13, color: "#A78BFA", marginBottom: 8 }}>
-                  ⚡ Bot Control
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>
-                  Auto-runs every 15 min (9:45 AM–2:45 PM). Click to run now manually.
-                </div>
-                <button
-                  onClick={async () => {
-                    setSigLoading(true); setSigResult(null);
-                    try {
-                      const r = await fetch("/api/trade/signal");
-                      const d = await r.json();
-                      setSigResult(d);
-                    } catch (e) { setSigResult({ ok: false, error: e.message }); }
-                    setSigLoading(false);
-                  }}
-                  disabled={sigLoading}
-                  style={{ width: "100%", background: "linear-gradient(135deg,#7C3AED,#5B21B6)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 800, fontSize: 14, padding: "12px", cursor: "pointer", opacity: sigLoading ? 0.6 : 1, marginBottom: sigResult ? 10 : 0 }}
-                >
-                  {sigLoading ? "⏳ Running signal scan..." : "⚡ Run Signal Now"}
-                </button>
-                {sigResult && (
-                  <div style={{ fontSize: 11, background: "rgba(0,0,0,.3)", borderRadius: 8, padding: 10, marginTop: 4, fontFamily: "monospace", whiteSpace: "pre-wrap", maxHeight: 180, overflowY: "auto" }}>
-                    {sigResult.ok === false
-                      ? `❌ ${sigResult.error || sigResult.reason}`
-                      : sigResult.results?.map(r => `${r.symbol}: ${r.signal || r.error || "no signal"} ${r.mode ? `[${r.mode}]` : ""} ${r.entry_price ? `@ ₹${r.entry_price}` : ""} ${r.note || r.reason || ""}`).join("\n") || JSON.stringify(sigResult, null, 2)
-                    }
-                  </div>
-                )}
+          <div style={{ ...CARD, marginBottom: 14, border: "1px solid rgba(167,139,250,.3)", background: "rgba(167,139,250,.06)" }}>
+            <div style={{ fontWeight: 800, fontSize: 13, color: "#A78BFA", marginBottom: 8 }}>⚡ Bot Control</div>
+            <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>Auto-runs every 15 min (9:45 AM–2:45 PM). Click to run now manually.</div>
+            <button
+              onClick={async () => {
+                setSigLoading(true); setSigResult(null);
+                try {
+                  const r = await fetch("/api/trade/signal");
+                  const d = await r.json();
+                  setSigResult(d);
+                } catch (e) { setSigResult({ ok: false, error: e.message }); }
+                setSigLoading(false);
+              }}
+              disabled={sigLoading}
+              style={{ width: "100%", background: "linear-gradient(135deg,#7C3AED,#5B21B6)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 800, fontSize: 14, padding: "12px", cursor: "pointer", opacity: sigLoading ? 0.6 : 1, marginBottom: sigResult ? 10 : 0 }}
+            >
+              {sigLoading ? "⏳ Running signal scan..." : "⚡ Run Signal Now"}
+            </button>
+            {sigResult && (
+              <div style={{ fontSize: 11, background: "rgba(0,0,0,.3)", borderRadius: 8, padding: 10, marginTop: 4, fontFamily: "monospace", whiteSpace: "pre-wrap", maxHeight: 180, overflowY: "auto" }}>
+                {sigResult.ok === false
+                  ? `❌ ${sigResult.error || sigResult.reason}`
+                  : sigResult.results?.map(r => `${r.symbol}: ${r.signal || r.error || "no signal"} ${r.mode ? `[${r.mode}]` : ""} ${r.entry_price ? `@ ₹${r.entry_price}` : ""} ${r.note || r.reason || ""}`).join("\n") || JSON.stringify(sigResult, null, 2)
+                }
               </div>
-            );
-          })()}
+            )}
+          </div>
 
           {/* Emergency Exit */}
           <div style={{ ...CARD, marginBottom: 14,
