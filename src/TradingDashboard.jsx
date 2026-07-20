@@ -121,30 +121,18 @@ export default function TradingDashboard({ user, onLogout }) {
   // ── Kite OAuth callback: detect ?request_token in URL ───────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const requestToken = params.get("request_token");
-    if (!requestToken) return;
+    const kiteSuccess = params.get("kite_success");
+    const kiteError   = params.get("kite_error");
+    if (!kiteSuccess && !kiteError) return;
 
-    // Remove from URL immediately
     window.history.replaceState({}, "", window.location.pathname);
 
-    // Exchange for access_token
-    const savedKey = sessionStorage.getItem("tp_kite_api_key") || "";
-    setConnectMsg({ ok: null, text: "⏳ Connecting to Zerodha..." });
-    fetch("/api/kite/connect", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ request_token: requestToken, api_key: savedKey }),
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (d.ok) {
-          setConnectMsg({ ok: true, text: `✅ Connected! Welcome ${d.user_name}` });
-          pollStatus();
-        } else {
-          setConnectMsg({ ok: false, text: `❌ Failed: ${d.error}` });
-        }
-      })
-      .catch(e => setConnectMsg({ ok: false, text: `❌ Network error: ${e.message}` }));
+    if (kiteSuccess) {
+      setConnectMsg({ ok: true, text: `✅ Connected! Welcome ${kiteSuccess}` });
+      pollStatus();
+    } else {
+      setConnectMsg({ ok: false, text: `❌ Failed: ${kiteError}` });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -713,7 +701,6 @@ export default function TradingDashboard({ user, onLogout }) {
                   const r = await fetch("/api/kite/connect");
                   const d = await r.json();
                   if (d.ok && d.loginUrl) {
-                    if (d.api_key) sessionStorage.setItem("tp_kite_api_key", d.api_key);
                     window.location.href = d.loginUrl;
                   } else {
                     alert("❌ " + (d.error || "Could not get login URL"));
