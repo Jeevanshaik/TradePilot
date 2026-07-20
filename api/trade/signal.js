@@ -244,10 +244,42 @@ export default async function handler(req, res) {
 
       if (!signal) { results.push({ ...state, signal: "none" }); continue; }
 
-      // ── Fire webhook (skip if PAPER_TRADE=true) ───────────────────────────
+      // ── Paper trade logging ───────────────────────────────────────────────
       const isPaper = process.env.PAPER_TRADE === "true";
       if (isPaper) {
-        results.push({ ...state, signal: signal.action, mode: "PAPER", note: "Signal detected — no real order placed" });
+        // Skip if already in an open paper trade for this symbol
+        const { data: existing } = await sb
+          .from("paper_trades")
+          .select("id")
+          .eq("symbol", inst.symbol)
+          .eq("status", "open")
+          .maybeSingle();
+
+        if (existing) {
+          results.push({ ...state, signal: signal.action, mode: "PAPER", note: "Already in open paper trade — skipped" });
+          continue;
+        }
+
+        const LOT_SIZES = { NIFTY: 75, BANKNIFTY: 35, FINNIFTY: 40 };
+        const lotSize   = LOT_SIZES[inst.symbol] || 75;
+
+        await sb.from("paper_trades").insert({
+          symbol:      inst.symbol,
+          action:      signal.action,
+          strategy:    signal.strategy,
+          entry_price: last,
+          lots:        inst.lots,
+          lot_size:    lotSize,
+          reason:      signal.reason,
+          status:      "open",
+          entry_time:  new Date().toISOString(),
+        });
+
+        results.push({
+          ...state, signal: signal.action, mode: "PAPER",
+          entry_price: last, lot_size: lotSize,
+          note: `Paper trade opened — waiting for exit at 3:20 PM`,
+        });
         continue;
       }
 

@@ -169,6 +169,55 @@ export default async function handler(req, res) {
 
     const totalPnl = positions.reduce((s, p) => s + (p.pnl || 0), 0);
 
+    // 4. Close any open PAPER trades
+    let paperSummary = null;
+    try {
+      const { data: openPaper } = await sb
+        .from("paper_trades")
+        .select("*")
+        .eq("status", "open");
+
+      if (openPaper?.length) {
+        const LOT_SIZES = { NIFTY: 75, BANKNIFTY: 35, FINNIFTY: 40 };
+        // Fetch current prices via Kite
+        const TOKENS = { NIFTY: 256265, BANKNIFTY: 260105 };
+        const priceMap = {};
+        for (const sym of ["NIFTY", "BANKNIFTY"]) {
+          try {
+            const r = await fetch(
+              `https://api.kite.trade/quote?i=NSE:${sym === "NIFTY" ? "NIFTY+50" : "NIFTY+BANK"}`,
+              { headers: { "X-Kite-Version": "3", Authorization: `token ${session.api_key}:${session.access_token}` } }
+            );
+            const d = await r.json();
+            const key = Object.keys(d.data || {})[0];
+            if (key) priceMap[sym] = d.data[key].last_price;
+          } catch {}
+        }
+
+        let paperPnl = 0;
+        for (const pt of openPaper) {
+          const exitPrice = priceMap[pt.symbol] || pt.entry_price;
+          const lotSize   = pt.lot_size || LOT_SIZES[pt.symbol] || 75;
+          const direction = pt.action === "BUY" ? 1 : -1;
+          // Delta-based P&L approximation for credit spread
+          const rawPnl    = direction * (exitPrice - pt.entry_price) * lotSize * 0.3;
+          // Cap: max profit 50pts × delta, max loss 80pts × delta
+          const cappedPnl = Math.max(Math.min(rawPnl, 50 * lotSize * 0.3), -80 * lotSize * 0.3);
+          const pnl       = Math.round(cappedPnl);
+          paperPnl       += pnl;
+
+          await sb.from("paper_trades").update({
+            status:     "closed",
+            exit_price: exitPrice,
+            pnl,
+            exit_time:  new Date().toISOString(),
+          }).eq("id", pt.id);
+        }
+        paperSummary = { closedPaperTrades: openPaper.length, paperPnl };
+        console.log(`[autoexit] Paper trades closed: ${openPaper.length} | Paper P&L ₹${paperPnl}`);
+      }
+    } catch (e) { console.warn("[autoexit] Paper trade close error:", e.message); }
+
     console.log(`[autoexit] Closed ${closed.length}/${positions.length} positions | P&L ₹${totalPnl}`);
 
     return res.status(200).json({
@@ -176,6 +225,7 @@ export default async function handler(req, res) {
       message: `✅ Closed ${closed.length} position(s)`,
       closed:  closed.length,
       totalPnl: Math.round(totalPnl * 100) / 100,
+      paperSummary,
       details: results,
     });
 
