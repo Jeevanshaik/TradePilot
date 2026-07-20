@@ -529,8 +529,8 @@ export default function TradingDashboard({ user, onLogout }) {
             <div style={{ fontWeight: 800, fontSize: 13, color: "#A78BFA", marginBottom: 12 }}>
               🔗 System Pipeline
             </div>
-            <PipelineRow icon="📊" label="TradingView Strategy (Pine Script)" status="pending" />
-            <PipelineRow icon="📡" label="Webhook Receiver"                   status="pending" />
+            <PipelineRow icon="📊" label="Signal Engine (7-Layer Strategy)"    status="ready"  />
+            <PipelineRow icon="⏰" label="Auto Scheduler (Every 15 min)"      status="ready"  />
             <PipelineRow icon="🧠" label="Claude AI Agent (Decision Engine)"  status="ready"  />
             <PipelineRow icon="🔌" label="Zerodha Kite API"                   status={kiteConnected ? "ready" : "pending"} />
             <PipelineRow icon="🛡️" label="Risk Manager"                       status="ready"  />
