@@ -88,7 +88,7 @@ async function getRequestToken(userId, password, totpSecret, apiKey) {
       user_id:      userId,
       request_id:   requestId,
       twofa_value:  totpCode,
-      twofa_type:   "totp",
+      twofa_type:   "token",
       skip_session: "",
     }),
   });
