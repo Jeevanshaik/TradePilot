@@ -44,7 +44,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "KITE_API_KEY not configured" });
     }
     const loginUrl = `https://kite.trade/connect/login?api_key=${apiKey}&v=3`;
-    return res.status(200).json({ ok: true, loginUrl });
+    return res.status(200).json({ ok: true, loginUrl, api_key: apiKey });
   }
 
   // ── DELETE: clear session ─────────────────────────────────────────────────

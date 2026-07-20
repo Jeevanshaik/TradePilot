@@ -127,11 +127,12 @@ export default function TradingDashboard({ user, onLogout }) {
     // Remove from URL immediately
     window.history.replaceState({}, "", window.location.pathname);
 
-    // Exchange for access_token — server uses KITE_API_KEY + KITE_API_SECRET env vars
+    // Exchange for access_token
+    const savedKey = sessionStorage.getItem("tp_kite_api_key") || "";
     fetch("/api/kite/connect", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ request_token: requestToken }),
+      body:    JSON.stringify({ request_token: requestToken, api_key: savedKey }),
     })
       .then(r => r.json())
       .then(d => {
@@ -758,6 +759,7 @@ export default function TradingDashboard({ user, onLogout }) {
                   const r = await fetch("/api/kite/connect");
                   const d = await r.json();
                   if (d.ok && d.loginUrl) {
+                    if (d.api_key) sessionStorage.setItem("tp_kite_api_key", d.api_key);
                     window.location.href = d.loginUrl;
                   } else {
                     alert("❌ " + (d.error || "Could not get login URL"));
