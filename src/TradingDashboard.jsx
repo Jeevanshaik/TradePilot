@@ -477,83 +477,35 @@ export default function TradingDashboard({ user, onLogout }) {
       {tab === "agent" && (
         <div style={{ padding: 16 }}>
 
-          {/* Agent Status Card */}
-          <div style={{
-            ...CARD,
-            background: agentActive
-              ? "linear-gradient(135deg,rgba(16,185,129,.14),rgba(5,150,105,.09))"
-              : "linear-gradient(135deg,rgba(239,68,68,.12),rgba(185,28,28,.07))",
-            border: `1px solid ${agentActive ? "rgba(16,185,129,.35)" : "rgba(239,68,68,.3)"}`,
-            textAlign: "center", marginBottom: 14,
+          {/* Bot Status */}
+          <div style={{ ...CARD, textAlign: "center", marginBottom: 14,
+            background: kiteConnected ? "linear-gradient(135deg,rgba(16,185,129,.14),rgba(5,150,105,.09))" : "linear-gradient(135deg,rgba(239,68,68,.12),rgba(185,28,28,.07))",
+            border: `1px solid ${kiteConnected ? "rgba(16,185,129,.35)" : "rgba(239,68,68,.3)"}`,
           }}>
-            <div style={{ fontSize: 48, marginBottom: 8 }}>{agentActive ? "🤖" : "😴"}</div>
-            <div style={{ fontWeight: 900, fontSize: 20, color: agentActive ? "#10B981" : "#EF4444" }}>
-              Agent is {agentActive ? "ACTIVE" : "STOPPED"}
+            <div style={{ fontSize: 40, marginBottom: 6 }}>{kiteConnected ? "🤖" : "🔌"}</div>
+            <div style={{ fontWeight: 900, fontSize: 18, color: kiteConnected ? "#10B981" : "#EF4444" }}>
+              {kiteConnected ? `Connected — ${liveStatus?.kiteUser || "Zerodha"}` : "Zerodha Not Connected"}
             </div>
-            <div style={{ fontSize: 12, opacity: 0.55, marginTop: 6, lineHeight: 1.5 }}>
-              {agentActive
-                ? "Monitoring TradingView signals\nand auto-executing trades"
-                : "Start agent to begin automated trading\nwith Zerodha Kite API"}
+            <div style={{ fontSize: 12, opacity: 0.55, marginTop: 4 }}>
+              {kiteConnected ? "Bot scanning every 15 min • Paper mode ON" : "Go to Setup tab → Connect Zerodha"}
             </div>
-            <button
-              onClick={() => {
-                if (agentActive) {
-                  if (window.confirm("Stop the trading agent?\nAny open positions will NOT be auto-closed.")) {
-                    setAgentActive(false);
-                  }
-                } else {
-                  if (!kiteConnected) {
-                    setTab("settings");
-                    setTimeout(() => alert("⚠️ Please connect your Zerodha Kite API first in Setup tab!"), 200);
-                    return;
-                  }
-                  setAgentActive(true);
-                }
-              }}
-              style={{
-                marginTop: 16,
-                background: agentActive
-                  ? "linear-gradient(135deg,#EF4444,#DC2626)"
-                  : "linear-gradient(135deg,#7C3AED,#5B21B6)",
-                border: "none", borderRadius: 12,
-                color: "#fff", fontWeight: 900, fontSize: 15,
-                padding: "12px 32px", cursor: "pointer",
-                boxShadow: agentActive
-                  ? "0 4px 20px rgba(239,68,68,.35)"
-                  : "0 4px 20px rgba(124,58,237,.35)",
-              }}
-            >
-              {agentActive ? "⏹ Stop Agent" : "▶ Start Agent"}
-            </button>
+            {!kiteConnected && (
+              <button onClick={() => setTab("settings")} style={{ marginTop: 12, background: "linear-gradient(135deg,#7C3AED,#5B21B6)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 800, fontSize: 13, padding: "10px 24px", cursor: "pointer" }}>
+                Go to Setup →
+              </button>
+            )}
           </div>
 
           {/* Pipeline Status */}
           <div style={{ ...CARD, marginBottom: 14 }}>
             <div style={{ fontWeight: 800, fontSize: 13, color: "#A78BFA", marginBottom: 12 }}>
-              🔗 System Pipeline
+              🔗 System Status
             </div>
-            <PipelineRow icon="📊" label="Signal Engine (7-Layer Strategy)"    status="ready"  />
-            <PipelineRow icon="⏰" label="Auto Scheduler (Every 15 min)"      status="ready"  />
-            <PipelineRow icon="🧠" label="Claude AI Agent (Decision Engine)"  status="ready"  />
-            <PipelineRow icon="🔌" label="Zerodha Kite API"                   status={kiteConnected ? "ready" : "pending"} />
-            <PipelineRow icon="🛡️" label="Risk Manager"                       status="ready"  />
-          </div>
-
-          {/* Webhook URL */}
-          <div style={{ ...CARD, marginBottom: 14 }}>
-            <div style={{ fontWeight: 800, fontSize: 13, color: "#A78BFA", marginBottom: 10 }}>
-              📡 TradingView Webhook URL
-            </div>
-            <div style={{
-              background: "rgba(0,0,0,.3)", borderRadius: 8,
-              padding: "10px 12px", fontSize: 11,
-              fontFamily: "monospace", color: "#10B981", wordBreak: "break-all",
-            }}>
-              {window.location.origin}/api/webhook/trading
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.45, marginTop: 8 }}>
-              Paste this URL in TradingView → Alert → Webhook URL
-            </div>
+            <PipelineRow icon="📊" label="Signal Engine (7-Layer Strategy)"  status="ready"  />
+            <PipelineRow icon="⏰" label="Auto Scheduler (Every 15 min)"     status="ready"  />
+            <PipelineRow icon="📝" label="Paper Trade Mode"                  status="ready"  />
+            <PipelineRow icon="🔌" label="Zerodha Kite API"                  status={kiteConnected ? "ready" : "pending"} />
+            <PipelineRow icon="🛡️" label="Risk Manager"                      status="ready"  />
           </div>
 
           {/* Live Positions */}
