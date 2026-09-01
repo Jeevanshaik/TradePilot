@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     const sb = getSupabase();
     const { data: session } = await sb
       .from("kite_session")
-      .select("api_key, access_token, user_name")
+      .select("api_key, access_token")
       .eq("id", 1)
       .maybeSingle();
 
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok:        true,
       connected: true,
-      kiteUser:  session.user_name,
+      kiteUser:  "Zerodha",
       positions,
       livePnl:   Math.round(livePnl * 100) / 100,
       count:     positions.length,

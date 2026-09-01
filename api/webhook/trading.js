@@ -69,7 +69,7 @@ function todayStartISO() {
 async function getKiteSession(sb) {
   const { data } = await sb
     .from("kite_session")
-    .select("api_key, access_token, user_name")
+    .select("api_key, access_token")
     .eq("id", 1)
     .maybeSingle();
   return data;

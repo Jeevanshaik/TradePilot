@@ -88,7 +88,7 @@ async function getRequestToken(userId, password, totpSecret, apiKey) {
       user_id:      userId,
       request_id:   requestId,
       twofa_value:  totpCode,
-      twofa_type:   "token",
+      twofa_type:   "totp",
       skip_session: "",
     }),
   });
@@ -157,12 +157,11 @@ export default async function handler(req, res) {
 
     // Step 3: Store in Supabase
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    // Only columns that exist in kite_session: id, api_key, access_token
     const { error } = await sb.from("kite_session").upsert({
       id:           1,
       api_key:      KITE_API_KEY,
       access_token: session.access_token,
-      user_name:    session.user_name || KITE_USER_ID,
-      refreshed_at: new Date().toISOString(),
     });
 
     if (error) throw new Error(`Supabase upsert failed: ${error.message}`);

@@ -64,7 +64,7 @@ export default async function handler(req, res) {
     // Kite connection
     const { data: session } = await sb
       .from("kite_session")
-      .select("api_key, access_token, user_name, user_id, created_at")
+      .select("api_key, access_token, created_at")
       .eq("id", 1)
       .maybeSingle();
 
@@ -86,8 +86,8 @@ export default async function handler(req, res) {
       winRate:       trades.length ? Math.round((wins / trades.length) * 100) : 0,
       trades:        trades.slice(0, 30),
       kiteConnected,
-      kiteUser:      session?.user_name || null,
-      kiteUserId:    session?.user_id   || null,
+      kiteUser:      kiteConnected ? "Zerodha" : null,
+      kiteUserId:    null,
       livePositions,
       paperMode:     process.env.PAPER_TRADE !== "false",
       maxDailyLoss:  parseInt(process.env.MAX_DAILY_LOSS     || "3000"),
