@@ -44,7 +44,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "KITE_API_KEY not configured" });
     }
     const loginUrl = `https://kite.trade/connect/login?api_key=${apiKey}&v=3`;
-    return res.status(200).json({ ok: true, loginUrl });
+    return res.status(200).json({ ok: true, loginUrl, api_key: apiKey });
   }
 
   // ── DELETE: clear session ─────────────────────────────────────────────────
@@ -96,16 +96,13 @@ export default async function handler(req, res) {
       const { access_token, user_id, user_name, email } = data.data;
 
       // Upsert single row (id=1) — we only ever have one Kite account
-      await sb.from("kite_session").upsert({
+      const { error: dbErr } = await sb.from("kite_session").upsert({
         id:           1,
         api_key:      apiKey,
-        api_secret:   apiSecret,
         access_token,
-        user_id,
-        user_name,
-        email:        email || null,
-        created_at:   new Date().toISOString(),
       });
+
+      if (dbErr) throw new Error(`Supabase save failed: ${dbErr.message}`);
 
       return res.status(200).json({
         ok:       true,
