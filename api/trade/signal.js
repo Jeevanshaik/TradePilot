@@ -200,7 +200,7 @@ export default async function handler(req, res) {
 
   const expiry  = nextExpiry();
   const today   = todayStr();
-  const baseUrl = "https://trade-pilot-beige.vercel.app";
+  const baseUrl = "https://project-tcc78.vercel.app";
   // SAFETY: paper mode unless PAPER_TRADE is explicitly "false".
   // Real money requires a deliberate env-var change, never a missing one.
   const isPaper = process.env.PAPER_TRADE !== "false";

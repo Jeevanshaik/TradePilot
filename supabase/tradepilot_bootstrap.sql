@@ -89,13 +89,13 @@ WHERE jobname IN ('alpha_signal_15min', 'kite_refresh_daily');
 SELECT cron.schedule(
   'alpha_signal_15min',
   '*/15 4-9 * * 1-5',
-  $$ SELECT net.http_get('https://trade-pilot-beige.vercel.app/api/trade/signal') $$
+  $$ SELECT net.http_get('https://project-tcc78.vercel.app/api/trade/signal') $$
 );
 
 SELECT cron.schedule(
   'kite_refresh_daily',
   '0 3 * * 1-5',
-  $$ SELECT net.http_get('https://trade-pilot-beige.vercel.app/api/kite/refresh') $$
+  $$ SELECT net.http_get('https://project-tcc78.vercel.app/api/kite/refresh') $$
 );
 
 -- ── 7. Verify: 4 tables + 2 cron jobs should appear below ────────────────────

@@ -21,13 +21,13 @@ where jobname in ('alpha_signal_15min', 'kite_refresh_daily');
 select cron.schedule(
   'alpha_signal_15min',
   '*/15 4-9 * * 1-5',
-  $$ select net.http_get('https://trade-pilot-beige.vercel.app/api/trade/signal') $$
+  $$ select net.http_get('https://project-tcc78.vercel.app/api/trade/signal') $$
 );
 
 select cron.schedule(
   'kite_refresh_daily',
   '0 3 * * 1-5',
-  $$ select net.http_get('https://trade-pilot-beige.vercel.app/api/kite/refresh') $$
+  $$ select net.http_get('https://project-tcc78.vercel.app/api/kite/refresh') $$
 );
 
 -- Verify: should list both jobs
