@@ -78,6 +78,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
+      build:         "v3.1",
       todayPnl:      Math.round(todayPnl * 100) / 100,
       tradeCount:    trades.length,
       openCount,
