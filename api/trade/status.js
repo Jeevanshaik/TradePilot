@@ -89,6 +89,7 @@ export default async function handler(req, res) {
       kiteUser:      session?.user_name || null,
       kiteUserId:    session?.user_id   || null,
       livePositions,
+      paperMode:     process.env.PAPER_TRADE !== "false",
       maxDailyLoss:  parseInt(process.env.MAX_DAILY_LOSS     || "3000"),
       maxTrades:     parseInt(process.env.MAX_TRADES_PER_DAY || "3"),
     });
