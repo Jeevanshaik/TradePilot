@@ -393,7 +393,7 @@ export default function TradingDashboard({ user, onLogout }) {
             <div style={{ ...CARD, display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#A78BFA" }}>📡 Last Signal</div>
-                <div style={{ fontSize: 12, opacity: 0.5, marginTop: 3 }}>No signal yet — awaiting TradingView alert</div>
+                <div style={{ fontSize: 12, opacity: 0.5, marginTop: 3 }}>No signal yet — Alpha Engine scans every 15 min</div>
               </div>
               <div style={{
                 background: "rgba(245,158,11,.12)",
@@ -540,8 +540,8 @@ export default function TradingDashboard({ user, onLogout }) {
 
           {/* Run Signal Now */}
           <div style={{ ...CARD, marginBottom: 14, border: "1px solid rgba(167,139,250,.3)", background: "rgba(167,139,250,.06)" }}>
-            <div style={{ fontWeight: 800, fontSize: 13, color: "#A78BFA", marginBottom: 8 }}>⚡ Bot Control</div>
-            <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>Auto-runs every 15 min (9:45 AM–2:45 PM). Click to run now manually.</div>
+            <div style={{ fontWeight: 800, fontSize: 13, color: "#A78BFA", marginBottom: 8 }}>⚡ Alpha Engine v3</div>
+            <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>7-component ensemble (EMA · momentum · VWAP · ORB · order-book · flow · volume) with regime detection, futures microstructure, Bayesian weighting + intraday SL/target exits. Auto-runs every 15 min (9:45 AM–2:45 PM).</div>
             <button
               onClick={async () => {
                 setSigLoading(true); setSigResult(null);
@@ -561,7 +561,14 @@ export default function TradingDashboard({ user, onLogout }) {
               <div style={{ fontSize: 11, background: "rgba(0,0,0,.3)", borderRadius: 8, padding: 10, marginTop: 4, fontFamily: "monospace", whiteSpace: "pre-wrap", maxHeight: 180, overflowY: "auto" }}>
                 {sigResult.ok === false
                   ? `❌ ${sigResult.error || sigResult.reason}`
-                  : sigResult.results?.map(r => `${r.symbol}: ${r.signal || r.error || "no signal"} ${r.mode ? `[${r.mode}]` : ""} ${r.entry_price ? `@ ₹${r.entry_price}` : ""} ${r.note || r.reason || ""}`).join("\n") || JSON.stringify(sigResult, null, 2)
+                  : sigResult.results?.map(r => {
+                      if (r.error) return `${r.symbol}: ⚠ ${r.error}`;
+                      const head  = `${r.symbol} [${r.regime || "?"}] score ${r.score ?? "?"} → ${r.signal === "none" ? "no trade" : `${r.signal}${r.confidence ? ` (${r.confidence}% conf)` : ""}`}${r.mode ? ` [${r.mode}]` : ""}${r.entry_price ? ` @ ₹${r.entry_price}` : ""}`;
+                      const detail = `  OBI ${r.obi ?? "-"} · flow ${r.flow ?? "-"} · tox ${r.toxicity ?? "-"} · RSI ${r.rsi ?? "-"} · ADX ${r.adx ?? "-"} · vol ${r.vol ?? "-"}`;
+                      const exits  = (r.exits || []).map(x => `  🔻 EXIT ${x.action} ₹${x.entry}→₹${x.exit} P&L ₹${x.pnl} (${x.why})`).join("\n");
+                      const note   = r.note || r.reason ? `  ${r.note || r.reason}` : "";
+                      return [head, detail, exits, note].filter(Boolean).join("\n");
+                    }).join("\n\n") || JSON.stringify(sigResult, null, 2)
                 }
               </div>
             )}
@@ -607,12 +614,14 @@ export default function TradingDashboard({ user, onLogout }) {
               ⚙️ How It Works
             </div>
             {[
-              ["1", "TradingView signal fires (BUY/SELL)"],
-              ["2", "Webhook hits our server instantly"],
-              ["3", "Risk check: time, daily loss, trade count"],
-              ["4", "Zerodha Kite places MARKET order"],
-              ["5", "Stop-loss order auto-placed (40% SL)"],
-              ["6", "Auto-exit at 3:15 PM if not closed"],
+              ["1", "Regime check: VIX, realized vol, ADX, trend slope"],
+              ["2", "Futures order-book scan: imbalance, flow, spread, toxicity"],
+              ["3", "7-component ensemble votes → alpha score + confidence"],
+              ["4", "Bayesian weight from realized win rate scales the score"],
+              ["5", "Entry only if score ≥ threshold AND ≥3 components agree"],
+              ["6", "Every 15 min: stop-loss / target / signal-flip exit checks"],
+              ["7", "Kill-switch on max daily loss or 3 straight losses"],
+              ["8", "3:15 PM safety net closes anything still open"],
             ].map(([n, txt]) => (
               <div key={n} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                 <div style={{
